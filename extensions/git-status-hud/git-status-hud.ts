@@ -42,23 +42,15 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		const branchName = state.branch ?? "detached";
 		const branchLabel = ` ${branchName}`;
 		const branch = theme.fg("accent", branchLabel);
-		const health = state.clean ? theme.fg("success", "clean") : theme.fg("warning", "dirty");
-		const sync = [state.ahead > 0 ? `ahead:${state.ahead}` : null, state.behind > 0 ? `behind:${state.behind}` : null].filter(Boolean);
-		const counts = [`staged:${state.staged}`, `unstaged:${state.unstaged}`, `untracked:${state.untracked}`];
-		const details = [...sync, ...(!state.clean ? counts : [])];
+		const health = state.clean ? theme.fg("success", "✓") : theme.fg("warning", "*");
+		const sync = [state.ahead > 0 ? `⇡${state.ahead}` : null, state.behind > 0 ? `⇣${state.behind}` : null].filter(Boolean);
+		const changes = [state.staged > 0 ? `+${state.staged}` : null, state.unstaged > 0 ? `!${state.unstaged}` : null, state.untracked > 0 ? `?${state.untracked}` : null].filter(Boolean);
+		const details = [...sync, ...changes];
 
 		const footer = details.length === 0
 			? `git ${branch} ${health}`
 			: `git ${branch} ${health} ${theme.fg("dim", details.join(" "))}`;
-		const widget = [
-			[
-				`branch: ${branchLabel}`,
-				state.clean ? "clean" : `unstaged: ${state.unstaged}`,
-				...(state.clean ? [] : [`staged: ${state.staged}`, `untracked: ${state.untracked}`]),
-				...(state.ahead > 0 ? [`ahead: ${state.ahead}`] : []),
-				...(state.behind > 0 ? [`behind: ${state.behind}`] : []),
-			].join(" | "),
-		];
+		const widget = [[branchLabel, ...(state.clean ? ["✓"] : changes), ...sync].join(" ")];
 
 		ctx.ui.setStatus(STATUS_KEY, footer);
 		ctx.ui.setWidget(WIDGET_KEY, widget, { placement: "belowEditor" });
@@ -105,13 +97,15 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		const branchLabel = ` ${branch ?? "detached"}`;
 		const clean = staged === 0 && unstaged === 0 && untracked === 0;
 		const summaryParts = [
-			`branch: ${branchLabel}`,
-			clean ? "clean" : `unstaged: ${unstaged}`,
-			...(clean ? [] : [`staged: ${staged}`, `untracked: ${untracked}`]),
-			...(ahead > 0 ? [`ahead: ${ahead}`] : []),
-			...(behind > 0 ? [`behind: ${behind}`] : []),
+			branchLabel,
+			...(clean ? ["✓"] : []),
+			...(staged > 0 ? [`+${staged}`] : []),
+			...(unstaged > 0 ? [`!${unstaged}`] : []),
+			...(untracked > 0 ? [`?${untracked}`] : []),
+			...(ahead > 0 ? [`⇡${ahead}`] : []),
+			...(behind > 0 ? [`⇣${behind}`] : []),
 		];
-		const summary = summaryParts.join(" | ");
+		const summary = summaryParts.join(" ");
 
 		return {
 			branch,
