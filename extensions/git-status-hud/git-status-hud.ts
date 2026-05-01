@@ -2,6 +2,8 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 type GitHudState = {
 	branch: string | null;
+	ahead: number;
+	behind: number;
 	staged: number;
 	unstaged: number;
 	untracked: number;
@@ -41,14 +43,22 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		const branchLabel = ` ${branchName}`;
 		const branch = theme.fg("accent", branchLabel);
 		const health = state.clean ? theme.fg("success", "clean") : theme.fg("warning", "dirty");
+		const sync = [state.ahead > 0 ? `ahead:${state.ahead}` : null, state.behind > 0 ? `behind:${state.behind}` : null].filter(Boolean);
 		const counts = [`staged:${state.staged}`, `unstaged:${state.unstaged}`, `untracked:${state.untracked}`];
+		const details = [...sync, ...(!state.clean ? counts : [])];
 
-		const footer = state.clean
+		const footer = details.length === 0
 			? `git ${branch} ${health}`
-			: `git ${branch} ${health} ${theme.fg("dim", counts.join(" "))}`;
-		const widget = state.clean
-			? [`branch: ${branchLabel} | clean`]
-			: [`branch: ${branchLabel} | unstaged: ${state.unstaged} | staged: ${state.staged} | untracked: ${state.untracked}`];
+			: `git ${branch} ${health} ${theme.fg("dim", details.join(" "))}`;
+		const widget = [
+			[
+				`branch: ${branchLabel}`,
+				state.clean ? "clean" : `unstaged: ${state.unstaged}`,
+				...(state.clean ? [] : [`staged: ${state.staged}`, `untracked: ${state.untracked}`]),
+				...(state.ahead > 0 ? [`ahead: ${state.ahead}`] : []),
+				...(state.behind > 0 ? [`behind: ${state.behind}`] : []),
+			].join(" | "),
+		];
 
 		ctx.ui.setStatus(STATUS_KEY, footer);
 		ctx.ui.setWidget(WIDGET_KEY, widget, { placement: "belowEditor" });
@@ -61,14 +71,23 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 			.filter(Boolean);
 
 		let branch: string | null = null;
+		let ahead = 0;
+		let behind = 0;
 		let staged = 0;
 		let unstaged = 0;
 		let untracked = 0;
 
 		for (const line of lines) {
 			if (line.startsWith("## ")) {
-				const head = line.slice(3).split("...")[0]?.trim() ?? "";
+				const header = line.slice(3);
+				const head = header.split("...")[0]?.trim() ?? "";
 				branch = head === "HEAD (no branch)" ? "detached" : head || null;
+
+				const tracking = header.match(/\[(.*)\]$/)?.[1] ?? "";
+				const aheadMatch = tracking.match(/ahead (\d+)/);
+				const behindMatch = tracking.match(/behind (\d+)/);
+				ahead = aheadMatch ? Number(aheadMatch[1]) : 0;
+				behind = behindMatch ? Number(behindMatch[1]) : 0;
 				continue;
 			}
 
@@ -85,12 +104,19 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 
 		const branchLabel = ` ${branch ?? "detached"}`;
 		const clean = staged === 0 && unstaged === 0 && untracked === 0;
-		const summary = clean
-			? `branch: ${branchLabel} | clean`
-			: `branch: ${branchLabel} | unstaged: ${unstaged} | staged: ${staged} | untracked: ${untracked}`;
+		const summaryParts = [
+			`branch: ${branchLabel}`,
+			clean ? "clean" : `unstaged: ${unstaged}`,
+			...(clean ? [] : [`staged: ${staged}`, `untracked: ${untracked}`]),
+			...(ahead > 0 ? [`ahead: ${ahead}`] : []),
+			...(behind > 0 ? [`behind: ${behind}`] : []),
+		];
+		const summary = summaryParts.join(" | ");
 
 		return {
 			branch,
+			ahead,
+			behind,
 			staged,
 			unstaged,
 			untracked,
@@ -116,6 +142,8 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 				? parseStatus(result.stdout)
 				: {
 					branch: null,
+					ahead: 0,
+					behind: 0,
 					staged: 0,
 					unstaged: 0,
 					untracked: 0,
