@@ -1,11 +1,11 @@
-# Build a Pi extension that adds a visible Git Status HUD to the UI.
+# Build a Pi extension that adds a visible status HUD to the UI.
 
 ## Goal:
-Show useful git context at a glance in Pi: current branch and repository state.
+Show useful status context at a glance in Pi: current branch, repository state, and context size.
 
 ## Implement in this repo with:
-- `extensions/git-status-hud/git-status-hud.ts`
-- `extensions/git-status-hud/README.md`
+- `extensions/status-hud/status-hud.ts`
+- `extensions/status-hud/README.md`
 - Update `install.sh` to include this extension
 - Update top-level `README.md` with a short section and install instructions
 
@@ -22,4 +22,4 @@ Show useful git context at a glance in Pi: current branch and repository state.
 2. Behavior
     - Update on session start
     - Update after each agent turn/tool execution
-    - Add command: `/git-hud [on|off|toggle|status|refresh]`
+    - Add command: `/status-hud [on|off|toggle|status|refresh]`

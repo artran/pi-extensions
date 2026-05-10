@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-type GitHudState = {
+type StatusHudState = {
 	branch: string | null;
 	ahead: number;
 	behind: number;
@@ -12,20 +12,38 @@ type GitHudState = {
 	summary: string;
 };
 
-const STATUS_KEY = "git-status-hud";
-const WIDGET_KEY = "git-status-hud-widget";
-const STATE_ENTRY = "git-status-hud-state";
+const STATUS_KEY = "status-hud";
+const WIDGET_KEY = "status-hud-widget";
+const STATE_ENTRY = "status-hud-state";
+const LEGACY_STATE_ENTRY = "git-status-hud-state";
 
-export default function gitStatusHud(pi: ExtensionAPI) {
+export default function statusHud(pi: ExtensionAPI) {
 	let enabled = true;
-	let lastState: GitHudState | null = null;
+	let lastState: StatusHudState | null = null;
 
 	const clearUi = (ctx: ExtensionContext) => {
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 		ctx.ui.setWidget(WIDGET_KEY, undefined);
 	};
 
-	const render = (ctx: ExtensionContext, state: GitHudState | null) => {
+	const isString = (value: string | null): value is string => value !== null;
+
+	const formatContextTokens = (tokens: number | null) => {
+		if (tokens === null) return "ctx ?k";
+		return `ctx ${(tokens / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+	};
+
+	const colourContextStat = (ctx: ExtensionContext) => {
+		const usage = ctx.getContextUsage();
+		const tokens = usage?.tokens ?? null;
+		const label = formatContextTokens(tokens);
+		if (tokens === null) return ctx.ui.theme.fg("dim", label);
+		if (tokens <= 50_000) return ctx.ui.theme.fg("success", label);
+		if (tokens <= 75_000) return ctx.ui.theme.fg("warning", label);
+		return ctx.ui.theme.fg("error", label);
+	};
+
+	const render = (ctx: ExtensionContext, state: StatusHudState | null) => {
 		if (!ctx.hasUI) return;
 		if (!enabled) {
 			clearUi(ctx);
@@ -33,9 +51,11 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		}
 
 		const theme = ctx.ui.theme;
+		const contextStat = colourContextStat(ctx);
 		if (!state || !state.inRepo) {
-			ctx.ui.setStatus(STATUS_KEY, theme.fg("dim", "git: no repo"));
-			ctx.ui.setWidget(WIDGET_KEY, [theme.fg("dim", "git: no repo")], { placement: "belowEditor" });
+			const noRepo = theme.fg("dim", "git: no repo") + ` ${contextStat}`;
+			ctx.ui.setStatus(STATUS_KEY, noRepo);
+			ctx.ui.setWidget(WIDGET_KEY, [noRepo], { placement: "belowEditor" });
 			return;
 		}
 
@@ -43,20 +63,19 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		const branchLabel = ` ${branchName}`;
 		const branch = theme.fg("accent", branchLabel);
 		const health = state.clean ? theme.fg("success", "✓") : theme.fg("warning", "*");
-		const sync = [state.ahead > 0 ? `⇡${state.ahead}` : null, state.behind > 0 ? `⇣${state.behind}` : null].filter(Boolean);
-		const changes = [state.staged > 0 ? `+${state.staged}` : null, state.unstaged > 0 ? `!${state.unstaged}` : null, state.untracked > 0 ? `?${state.untracked}` : null].filter(Boolean);
-		const details = [...sync, ...changes];
+		const sync = [state.ahead > 0 ? `⇡${state.ahead}` : null, state.behind > 0 ? `⇣${state.behind}` : null].filter(isString);
+		const changes = [state.staged > 0 ? `+${state.staged}` : null, state.unstaged > 0 ? `!${state.unstaged}` : null, state.untracked > 0 ? `?${state.untracked}` : null].filter(isString);
+		const gitStats = [...sync, ...changes].map((stat) => theme.fg("dim", stat));
+		const stats = [...gitStats, contextStat];
 
-		const footer = details.length === 0
-			? `git ${branch} ${health}`
-			: `git ${branch} ${health} ${theme.fg("dim", details.join(" "))}`;
-		const widget = [[branchLabel, ...(state.clean ? ["✓"] : changes), ...sync].join(" ")];
+		const footer = `git ${branch} ${health}${stats.length > 0 ? ` ${stats.join(" ")}` : ""}`;
+		const widget = [[branchLabel, ...(state.clean ? ["✓"] : changes), ...sync, contextStat].join(" ")];
 
 		ctx.ui.setStatus(STATUS_KEY, footer);
 		ctx.ui.setWidget(WIDGET_KEY, widget, { placement: "belowEditor" });
 	};
 
-	const parseStatus = (stdout: string): GitHudState => {
+	const parseStatus = (stdout: string): StatusHudState => {
 		const lines = stdout
 			.split(/\r?\n/)
 			.map((line) => line.trimEnd())
@@ -147,7 +166,7 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 				};
 
 		render(ctx, lastState);
-		if (announce) ctx.ui.notify(`Git HUD: ${lastState.summary}`, "info");
+		if (announce) ctx.ui.notify(`Status HUD: ${lastState.summary}`, "info");
 	};
 
 	const persistEnabled = () => {
@@ -157,8 +176,9 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		enabled = true;
 		for (const entry of ctx.sessionManager.getEntries()) {
-			if (entry.type === "custom" && entry.customType === STATE_ENTRY && typeof entry.data?.enabled === "boolean") {
-				enabled = entry.data.enabled;
+			if (entry.type === "custom" && (entry.customType === STATE_ENTRY || entry.customType === LEGACY_STATE_ENTRY)) {
+				const data = entry.data as { enabled?: unknown } | undefined;
+				if (typeof data?.enabled === "boolean") enabled = data.enabled;
 			}
 		}
 		await refresh(ctx);
@@ -176,8 +196,8 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 		clearUi(ctx);
 	});
 
-	pi.registerCommand("git-hud", {
-		description: "Control the Git status HUD: on|off|toggle|status|refresh",
+	pi.registerCommand("status-hud", {
+		description: "Control the status HUD: on|off|toggle|status|refresh",
 		handler: async (args, ctx) => {
 			const action = (args || "status").trim().toLowerCase();
 
@@ -185,7 +205,7 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 				case "":
 				case "status":
 					await refresh(ctx);
-					ctx.ui.notify(`Git HUD: ${enabled ? "on" : "off"}${lastState ? ` — ${lastState.summary}` : ""}`, "info");
+					ctx.ui.notify(`Status HUD: ${enabled ? "on" : "off"}${lastState ? ` — ${lastState.summary}` : ""}`, "info");
 					return;
 				case "refresh":
 					await refresh(ctx, true);
@@ -199,7 +219,7 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 					enabled = false;
 					persistEnabled();
 					clearUi(ctx);
-					ctx.ui.notify("Git HUD: off", "info");
+					ctx.ui.notify("Status HUD: off", "info");
 					return;
 				case "toggle":
 					enabled = !enabled;
@@ -208,11 +228,11 @@ export default function gitStatusHud(pi: ExtensionAPI) {
 						await refresh(ctx, true);
 					} else {
 						clearUi(ctx);
-						ctx.ui.notify("Git HUD: off", "info");
+						ctx.ui.notify("Status HUD: off", "info");
 					}
 					return;
 				default:
-					ctx.ui.notify("Usage: /git-hud [on|off|toggle|status|refresh]", "warning");
+					ctx.ui.notify("Usage: /status-hud [on|off|toggle|status|refresh]", "warning");
 			}
 		},
 	});

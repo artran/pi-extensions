@@ -4,15 +4,16 @@ Custom Pi extensions collected in this repo.
 
 ## Included
 
-### git-status-hud
+### status-hud
 
-Shows a Git HUD in Pi with:
+Shows a status HUD in Pi with:
 - current branch
 - clean/dirty state
 - staged / unstaged / untracked counts
+- current context size in k tokens (green up to 50k, yellow up to 75k, red above)
 
 Files:
-- `extensions/git-status-hud/git-status-hud.ts`
+- `extensions/status-hud/status-hud.ts`
 
 ## Install
 
@@ -26,5 +27,5 @@ Or install just this extension:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-cp extensions/git-status-hud/git-status-hud.ts ~/.pi/agent/extensions/git-status-hud.ts
+cp extensions/status-hud/status-hud.ts ~/.pi/agent/extensions/status-hud.ts
 ```
