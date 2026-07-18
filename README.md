@@ -6,11 +6,7 @@ Custom Pi extensions collected in this repo.
 
 ### status-hud
 
-Shows a status HUD in Pi with:
-- current branch
-- clean/dirty state
-- staged / unstaged / untracked counts
-- current context size in k tokens (green up to 50k, yellow up to 75k, red above)
+Shows the current context size in Pi's footer and below the editor, coloured green up to 50k tokens, yellow up to 75k, and red above.
 
 Files:
 - `extensions/status-hud/status-hud.ts`

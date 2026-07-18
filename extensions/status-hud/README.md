@@ -4,11 +4,7 @@ A Pi extension that shows status information in two places:
 - a persistent footer status entry
 - a compact widget below the editor
 
-It displays:
-- current branch
-- clean/dirty state
-- counts for staged, unstaged, and untracked files
-- current context size in k tokens, coloured green up to 50k, yellow up to 75k, and red above
+It displays the current context size in k tokens, coloured green up to 50k, yellow up to 75k, and red above.
 
 ## Files
 
