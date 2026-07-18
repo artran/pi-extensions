@@ -3,6 +3,8 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 const STATUS_KEY = "status-hud";
 const WIDGET_KEY = "status-hud-widget";
 const STATE_ENTRY = "status-hud-state";
+const CONTEXT_TOKEN_WARNING_BREAKPOINT = 50_000;
+const CONTEXT_TOKEN_ERROR_BREAKPOINT = 75_000;
 
 export default function statusHud(pi: ExtensionAPI) {
 	let enabled = true;
@@ -22,8 +24,8 @@ export default function statusHud(pi: ExtensionAPI) {
 		const label = formatContextTokens(tokens);
 
 		if (tokens === null) return { label, coloured: ctx.ui.theme.fg("dim", label) };
-		if (tokens <= 50_000) return { label, coloured: ctx.ui.theme.fg("success", label) };
-		if (tokens <= 75_000) return { label, coloured: ctx.ui.theme.fg("warning", label) };
+		if (tokens <= CONTEXT_TOKEN_WARNING_BREAKPOINT) return { label, coloured: ctx.ui.theme.fg("success", label) };
+		if (tokens <= CONTEXT_TOKEN_ERROR_BREAKPOINT) return { label, coloured: ctx.ui.theme.fg("warning", label) };
 		return { label, coloured: ctx.ui.theme.fg("error", label) };
 	};
 
