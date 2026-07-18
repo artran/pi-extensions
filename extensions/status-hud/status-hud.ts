@@ -3,8 +3,8 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 const STATUS_KEY = "status-hud";
 const WIDGET_KEY = "status-hud-widget";
 const STATE_ENTRY = "status-hud-state";
-const CONTEXT_TOKEN_WARNING_BREAKPOINT = 50_000;
-const CONTEXT_TOKEN_ERROR_BREAKPOINT = 75_000;
+const CONTEXT_TOKEN_WARNING_BREAKPOINT = 100_000;
+const CONTEXT_TOKEN_ERROR_BREAKPOINT = 175_000;
 
 export default function statusHud(pi: ExtensionAPI) {
 	let enabled = true;
