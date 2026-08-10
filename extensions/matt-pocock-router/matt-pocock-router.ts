@@ -82,10 +82,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   // 2. Register custom command to quickly check or toggle current skill mapping
-  pi.registerCommand({
-    name: "skill-routes",
+  // NOTE: registerCommand's signature is (name: string, options) and the
+  // callback field is `handler` (not `execute`). Passing a single object as
+  // the first argument makes `command.name` a non-string, which crashes the
+  // slash-command autocomplete (value.startsWith is not a function) because
+  // the autocomplete item's `value` ends up being the whole command object.
+  pi.registerCommand("skill-routes", {
     description: "Display the current Matt Pocock skill-to-model routes",
-    async execute(_args, ctx) {
+    async handler(_args, ctx) {
       let output = "### Active Skill Model Routes\n\n";
       output += "| Skill | Assigned Model |\n|---|---|\n";
 
@@ -94,7 +98,6 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify("Skill routes rendered in chat window", "info");
-      return output;
     },
   });
 }
