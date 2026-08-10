@@ -8,8 +8,9 @@ const TIERS = {
   // Heavy Reasoning ($12 limit burns faster)
   HEAVY: "opencode-go/kimi-k3",
 
-  // Mid-Tier Workhorse (High quality, great context caching)
-  WORKHORSE: "opencode-go/kimi-k2.7-code",
+  // Mid-Tier Workhorse (Qwen 3.7 Plus — best cache economics in the catalog:
+  // $0.40 in / $0.04 cache-read per 1M tokens, ideal for long interactive loops)
+  WORKHORSE: "opencode-go/qwen3.7-plus",
 
   // Fast / Budget (Thousands of calls per 5h window)
   FAST: "opencode-go/deepseek-v4-flash",
@@ -21,7 +22,7 @@ const TIERS = {
  * Mapped against every skill in skills-list.md, grouped by the same
  * sections. Tiers reflect the kind of work each skill does:
  *   HEAVY      — deep planning, architectural grilling, diagnosis
- *   WORKHORSE  — interactive build/review cycles, synthesis, authoring
+ *   WORKHORSE  — interactive build/review cycles that reuse a long context
  *   FAST        — routing, triage, one-shot setup, compact handoffs
  */
 const SKILL_ROUTER: Record<string, string> = {
