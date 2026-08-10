@@ -17,33 +17,71 @@ const TIERS = {
 
 /**
  * Matt Pocock Skill -> Model Mapping Matrix
+ *
+ * Mapped against every skill in skills-list.md, grouped by the same
+ * sections. Tiers reflect the kind of work each skill does:
+ *   HEAVY      — deep planning, architectural grilling, diagnosis
+ *   WORKHORSE  — interactive build/review cycles, synthesis, authoring
+ *   FAST        — routing, triage, one-shot setup, compact handoffs
  */
 const SKILL_ROUTER: Record<string, string> = {
-  // --- HEAVY REASONING (Kimi K3) ---
-  // Planning, architectural grilling, domain design
-  "grill-me": TIERS.HEAVY,
+  // === Engineering — user-invoked ===
+  // Router/triage over user-invoked skills — cheap dispatch
+  "ask-matt": TIERS.FAST,
+  // Grilling + domain modeling inline — heavy reasoning
   "grill-with-docs": TIERS.HEAVY,
-  "domain-modeling": TIERS.HEAVY,
-  "codebase-design": TIERS.HEAVY,
-  "system-architecture": TIERS.HEAVY,
-  "debug-deep": TIERS.HEAVY,
-
-  // --- WORKHORSE (Kimi K2.7 Code / Qwen 3.7 Plus) ---
-  // Interactive TDD cycles, refactoring, feature implementation
-  "tdd": TIERS.WORKHORSE,
-  "red-green-refactor": TIERS.WORKHORSE,
-  "implement-feature": TIERS.WORKHORSE,
-  "write-tests": TIERS.WORKHORSE,
-  "refactor": TIERS.WORKHORSE,
-  "code-review": TIERS.WORKHORSE,
-
-  // --- FAST / LOW COST (DeepSeek V4 Flash) ---
-  // Triage, git management, handoffs, micro-edits
+  // Move issues through a triage state machine — cheap transitions
   "triage": TIERS.FAST,
+  // Scan codebase for deepening opportunities, then grill — heavy
+  "improve-codebase-architecture": TIERS.HEAVY,
+  // One-shot repo config — run once, cheap
+  "setup-matt-pocock-skills": TIERS.FAST,
+  // Synthesize a conversation into a spec — workhorse synthesis
+  "to-spec": TIERS.WORKHORSE,
+  // Break a plan into tracer-bullet tickets with blocking edges — workhorse
+  "to-tickets": TIERS.WORKHORSE,
+  // Orchestrate tdd + code-review against a spec — heavy coordination
+  "implement": TIERS.HEAVY,
+  // Plan a huge chunk of work as decision tickets — heavy planning
+  "wayfinder": TIERS.HEAVY,
+
+  // === Engineering — model-invoked ===
+  // Throwaway prototype to answer a design question — workhorse build
+  "prototype": TIERS.WORKHORSE,
+  // Disciplined diagnosis loop for hard bugs — heavy reasoning
+  "diagnosing-bugs": TIERS.HEAVY,
+  // Investigate against high-trust primary sources — workhorse synthesis
+  "research": TIERS.WORKHORSE,
+  // Red-green-refactor interactive loop — workhorse
+  "tdd": TIERS.WORKHORSE,
+  // Sharpen the project's domain model — heavy reasoning
+  "domain-modeling": TIERS.HEAVY,
+  // Deep-module design vocabulary — heavy reasoning
+  "codebase-design": TIERS.HEAVY,
+  // Two-axis diff review as parallel sub-agents — workhorse
+  "code-review": TIERS.WORKHORSE,
+  // Trace intent through each side of a merge conflict — workhorse
+  "resolving-merge-conflicts": TIERS.WORKHORSE,
+  // Generate an interactive bash wizard — workhorse authoring
+  "wizard": TIERS.WORKHORSE,
+
+  // === Productivity — user-invoked ===
+  // Relentless interview about a plan/design — heavy reasoning
+  "grill-me": TIERS.HEAVY,
+  // Compact conversation into a handoff doc — cheap summary
   "handoff": TIERS.FAST,
-  "git-commit": TIERS.FAST,
-  "generate-docs": TIERS.FAST,
-  "explain-code": TIERS.FAST,
+  // Multi-session teaching using the cwd as workspace — workhorse
+  "teach": TIERS.WORKHORSE,
+  // Turn a decision into a Markdown questionnaire — workhorse authoring
+  "to-questionnaire": TIERS.WORKHORSE,
+  // Re-pitch a misfired message with missing context — fast retrieval
+  "wait-what": TIERS.FAST,
+
+  // === Productivity — model-invoked ===
+  // Reusable interview primitive behind grill-me/triage/wayfinder — heavy
+  "grilling": TIERS.HEAVY,
+  // Authoring skills, AGENTS.md/CLAUDE.md, pointer docs — workhorse
+  "writing-for-agents": TIERS.WORKHORSE,
 };
 
 export default function (pi: ExtensionAPI) {
