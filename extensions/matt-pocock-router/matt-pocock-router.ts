@@ -1,4 +1,5 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 
 /**
  * Model Tier Mappings for OpenCode Go
@@ -154,68 +155,112 @@ const SKILL_ROUTER: Record<string, string> = {
   "writing-for-agents": TIERS.WORKHORSE,
 };
 
+/**
+ * Extract a skill name from slash input, supporting both invocation forms:
+ *   - bare:         "/grill-me component.tsx"    -> "grill-me"
+ *   - pi skill:     "/skill:grill-me args"       -> "grill-me"
+ * Returns null when the input is not a slash command.
+ */
+function parseSkillCommand(text: string): string | null {
+  const trimmed = text.trim();
+  const skillMatch = trimmed.match(/^\/skill:([a-zA-Z0-9_-]+)/);
+  if (skillMatch) return skillMatch[1].toLowerCase();
+  const bareMatch = trimmed.match(/^\/([a-zA-Z0-9_-]+)/);
+  if (bareMatch) return bareMatch[1].toLowerCase();
+  return null;
+}
+
+/**
+ * Resolve a "provider/modelId" string (as stored in TIERS/SKILL_ROUTER)
+ * to the registry's Model object. pi.setModel() takes a Model, not a
+ * string, so this lookup is required.
+ */
+function resolveModel(ctx: ExtensionContext, id: string) {
+  const slash = id.indexOf("/");
+  if (slash === -1) return undefined;
+  return ctx.modelRegistry.find(id.slice(0, slash), id.slice(slash + 1));
+}
+
 export default function (pi: ExtensionAPI) {
-  let previousModel: string | null = null;
+  // 1. Route skills to their tier model + thinking level.
+  //    Hooks the `input` event, which fires AFTER extension commands are
+  //    checked but BEFORE pi expands `/skill:...` into skill content. That
+  //    means we see the raw command whether the user typed the bare form
+  //    ("/grill-me") or the pi skill form ("/skill:grill-me"). Returning
+  //    { action: "continue" } lets the message flow to the LLM unchanged.
+  pi.on("input", async (event, ctx) => {
+    // Extension-injected messages (pi.sendUserMessage) are not user skill
+    // selections — leave them alone.
+    if (event.source === "extension") return { action: "continue" };
 
-  // 1. Intercept prompt commands (Slash commands like /grill-me, /tdd, etc.)
-  pi.on("message_start", async (event, ctx) => {
-    if (event.message.role !== "user") return;
+    const skillName = parseSkillCommand(event.text);
+    if (!skillName) return { action: "continue" };
 
-    // content may be a string (typed text) or an array of content blocks
-    // (e.g. an image). Slash commands are always plain string input, so any
-    // non-string content is never a slash command — bail before touching it.
-    const rawContent = event.message.content;
-    const text = typeof rawContent === "string" ? rawContent.trim() : "";
-    if (!text || !text.startsWith("/")) return;
-
-    // Extract command name (e.g. "/grill-me component.tsx" -> "grill-me")
-    const match = text.match(/^\/([a-zA-Z0-9_-]+)/);
-    if (!match) return;
-
-    const skillName = match[1].toLowerCase();
     const targetModel = SKILL_ROUTER[skillName];
     const targetThinking = SKILL_THINKING[skillName];
+    if (!targetModel) return { action: "continue" };
 
-    if (targetModel) {
-      const currentModel = ctx.model.id;
-
-      if (currentModel !== targetModel) {
-        // Track current model so we could restore it later if desired
-        previousModel = currentModel;
-
-        // Switch active model dynamically. Per the pi docs, a model change
-        // itself emits thinking_level_select (thinking is clamped to the new
-        // model's capabilities), so any setThinkingLevel call MUST come
-        // after this await to be the final word.
-        await ctx.setModel(targetModel);
-      }
-
-      // Apply the per-skill thinking level. Clamped to the model's
-      // thinkingLevelMap by pi, so unsupported levels are safe. Run even
-      // when the model didn't change so invoking a skill pins its thinking
-      // level regardless of what the user set manually.
-      if (targetThinking) {
-        // setThinkingLevel lives on `pi` (ExtensionAPI), not `ctx`
-        // (ExtensionContext only exposes thinkingLevel as a readonly
-        // getter). Confirmed by the preset.ts bundled example.
-        pi.setThinkingLevel(targetThinking);
-      }
-
-      const modelLabel = targetModel.split("/").pop();
-      const thinkingLabel = targetThinking ? ` · thinking ${targetThinking}` : "";
-      ctx.ui.notify(`Routed /${skillName} → ${modelLabel}${thinkingLabel}`, "info");
+    const model = resolveModel(ctx, targetModel);
+    if (!model) {
+      ctx.ui.notify(
+        `Routed /${skillName} → ${targetModel}: unknown model (check TIERS)`,
+        "error"
+      );
+      return { action: "continue" };
     }
+
+    // Compare by "provider/modelId": ctx.model.id is only the bare model id
+    // (e.g. "deepseek-v4-flash"), so the naive string compare never matched.
+    const current = ctx.model;
+    const currentKey = current ? `${current.provider}/${current.id}` : null;
+
+    if (currentKey !== targetModel) {
+      // Per the pi docs, a model change itself emits thinking_level_select
+      // (thinking is clamped to the new model's capabilities), so any
+      // setThinkingLevel call MUST come after this await to be the final
+      // word. Returns false when no API key is configured for the model.
+      const switched = await pi.setModel(model);
+      if (!switched) {
+        ctx.ui.notify(
+          `Routed /${skillName} → ${targetModel}: no API key available`,
+          "error"
+        );
+        return { action: "continue" };
+      }
+    }
+
+    // Apply the per-skill thinking level. Clamped to the model's
+    // thinkingLevelMap by pi, so unsupported levels are safe. Run even
+    // when the model didn't change so invoking a skill pins its thinking
+    // level regardless of what the user set manually.
+    if (targetThinking) {
+      pi.setThinkingLevel(targetThinking);
+    }
+
+    const modelLabel = model.id;
+    const thinkingLabel = targetThinking ? ` · thinking ${targetThinking}` : "";
+    ctx.ui.notify(`Routed /${skillName} → ${modelLabel}${thinkingLabel}`, "info");
+
+    return { action: "continue" };
   });
 
-  // 2. Register custom command to quickly check or toggle current skill mapping
-  // NOTE: registerCommand's signature is (name: string, options) and the
-  // callback field is `handler` (not `execute`). Passing a single object as
-  // the first argument makes `command.name` a non-string, which crashes the
-  // slash-command autocomplete (value.startsWith is not a function) because
-  // the autocomplete item's `value` ends up being the whole command object.
+  // 2. Render the /skill-routes table as a custom message in the transcript.
+  pi.registerMessageRenderer("skill-routes", (message, { outputPad }, theme) => {
+    const text = String(message.content);
+    const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+    box.addChild(new Text(text, 0, 0));
+    return box;
+  });
+
+  // 3. Command to display the current skill-to-model mapping.
+  //    registerCommand's signature is (name: string, options) and the
+  //    callback field is `handler` (not `execute`). Passing a single object
+  //    as the first argument makes `command.name` a non-string, which
+  //    crashes the slash-command autocomplete (value.startsWith is not a
+  //    function) — see the git history for the original bug.
   pi.registerCommand("skill-routes", {
     description: "Display the current Matt Pocock skill-to-model routes",
-    async handler(_args, ctx) {
+    handler: async (_args, _ctx) => {
       let output = "### Active Skill Model Routes\n\n";
       output += "| Skill | Assigned Model | Thinking |\n|---|---|---|\n";
 
@@ -224,7 +269,11 @@ export default function (pi: ExtensionAPI) {
         output += `| \`/${skill}\` | \`${model}\` | \`${thinking}\` |\n`;
       }
 
-      ctx.ui.notify("Skill routes rendered in chat window", "info");
+      pi.sendMessage({
+        customType: "skill-routes",
+        content: output,
+        display: true,
+      });
     },
   });
 }
