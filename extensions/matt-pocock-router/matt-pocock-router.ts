@@ -5,8 +5,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * Adjust model IDs here if using OpenRouter, Anthropic, etc.
  */
 const TIERS = {
-  // Heavy Reasoning ($12 limit burns faster)
-  HEAVY: "opencode-go/kimi-k3",
+  // Heavy Reasoning — GLM 5.2 (Zhipu). ~2x cheaper than Kimi K3 at similar
+  // capability: $1.40 in / $4.40 out / $0.26 cache-read per 1M tokens.
+  HEAVY: "opencode-go/glm-5.2",
 
   // Mid-Tier Workhorse (Qwen 3.7 Plus — best cache economics in the catalog:
   // $0.40 in / $0.04 cache-read per 1M tokens, ideal for long interactive loops)
@@ -25,6 +26,74 @@ const TIERS = {
  *   WORKHORSE  — interactive build/review cycles that reuse a long context
  *   FAST        — routing, triage, one-shot setup, compact handoffs
  */
+// Pi thinking levels; clamped per-model by setThinkingLevel.
+//   off | minimal | low | medium | high | xhigh | max
+type ThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
+/**
+ * Per-skill thinking-level overrides.
+ *
+ * Deliberately scoped to the tiers where the knob actually moves:
+ *
+ *   - HEAVY (glm-5.2): thinkingLevelMap exposes `high` and `max` only
+ *     (off..medium and xhigh are null). Split by depth of reasoning:
+ *       `max`  — multi-step planning, diagnosis, grilling-with-docs,
+ *                and the reusable grilling primitive
+ *       `high` — lighter grilling and the two design disciplines, where
+ *                the extra reasoning depth of `max` buys less than for
+ *                open-ended exploration/diagnosis
+ *
+ *   - FAST (deepseek-v4-flash): exposes off / high / max only. Trivial
+ *     dispatches go `off` (skip reasoning tokens entirely); the one
+ *     compaction skill goes `high` so the handoff summary keeps quality.
+ *
+ *   - WORKHORSE (qwen3.7-plus): full off..high granularity, and $1.60/M
+ *     output makes reasoning tokens non-trivial — the only tier where a
+ *     real 2-bucket split pays. Synthesis/authoring at `medium`, precision /
+ *     interaction loops at `high`.
+ */
+const SKILL_THINKING: Record<string, ThinkingLevel> = {
+  // === HEAVY — deepest reasoning at `max` ===
+  "grill-with-docs": "max",
+  "implement": "max",
+  "wayfinder": "max",
+  "diagnosing-bugs": "max",
+  "improve-codebase-architecture": "max",
+  "grilling": "max",
+  // === HEAVY — lighter grilling / design disciplines at `high` ===
+  "grill-me": "high",
+  "domain-modeling": "high",
+  "codebase-design": "high",
+
+  // === FAST — trivial dispatch turns reasoning off ===
+  "ask-matt": "off",
+  "triage": "off",
+  "setup-matt-pocock-skills": "off",
+  "wait-what": "off",
+  // === FAST — compaction needs real reasoning ===
+  "handoff": "high",
+
+  // === WORKHORSE — precision / interaction at high ===
+  "tdd": "high",
+  "code-review": "high",
+  "resolving-merge-conflicts": "high",
+  // === WORKHORSE — synthesis / authoring at medium ===
+  "to-spec": "medium",
+  "to-tickets": "medium",
+  "research": "medium",
+  "writing-for-agents": "medium",
+  "teach": "medium",
+  "to-questionnaire": "medium",
+  "prototype": "medium",
+  "wizard": "medium",
+};
 const SKILL_ROUTER: Record<string, string> = {
   // === Engineering — user-invoked ===
   // Router/triage over user-invoked skills — cheap dispatch
@@ -92,7 +161,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("message_start", async (event, ctx) => {
     if (event.message.role !== "user") return;
 
-    const text = event.message.content?.trim();
+    // content may be a string (typed text) or an array of content blocks
+    // (e.g. an image). Slash commands are always plain string input, so any
+    // non-string content is never a slash command — bail before touching it.
+    const rawContent = event.message.content;
+    const text = typeof rawContent === "string" ? rawContent.trim() : "";
     if (!text || !text.startsWith("/")) return;
 
     // Extract command name (e.g. "/grill-me component.tsx" -> "grill-me")
@@ -101,6 +174,7 @@ export default function (pi: ExtensionAPI) {
 
     const skillName = match[1].toLowerCase();
     const targetModel = SKILL_ROUTER[skillName];
+    const targetThinking = SKILL_THINKING[skillName];
 
     if (targetModel) {
       const currentModel = ctx.model.id;
@@ -109,14 +183,27 @@ export default function (pi: ExtensionAPI) {
         // Track current model so we could restore it later if desired
         previousModel = currentModel;
 
-        // Switch active model dynamically
+        // Switch active model dynamically. Per the pi docs, a model change
+        // itself emits thinking_level_select (thinking is clamped to the new
+        // model's capabilities), so any setThinkingLevel call MUST come
+        // after this await to be the final word.
         await ctx.setModel(targetModel);
-
-        ctx.ui.notify(
-          `Routed /${skillName} → ${targetModel.split("/").pop()}`,
-          "info"
-        );
       }
+
+      // Apply the per-skill thinking level. Clamped to the model's
+      // thinkingLevelMap by pi, so unsupported levels are safe. Run even
+      // when the model didn't change so invoking a skill pins its thinking
+      // level regardless of what the user set manually.
+      if (targetThinking) {
+        // setThinkingLevel lives on `pi` (ExtensionAPI), not `ctx`
+        // (ExtensionContext only exposes thinkingLevel as a readonly
+        // getter). Confirmed by the preset.ts bundled example.
+        pi.setThinkingLevel(targetThinking);
+      }
+
+      const modelLabel = targetModel.split("/").pop();
+      const thinkingLabel = targetThinking ? ` · thinking ${targetThinking}` : "";
+      ctx.ui.notify(`Routed /${skillName} → ${modelLabel}${thinkingLabel}`, "info");
     }
   });
 
@@ -130,10 +217,11 @@ export default function (pi: ExtensionAPI) {
     description: "Display the current Matt Pocock skill-to-model routes",
     async handler(_args, ctx) {
       let output = "### Active Skill Model Routes\n\n";
-      output += "| Skill | Assigned Model |\n|---|---|\n";
+      output += "| Skill | Assigned Model | Thinking |\n|---|---|---|\n";
 
       for (const [skill, model] of Object.entries(SKILL_ROUTER)) {
-        output += `| \`/${skill}\` | \`${model}\` |\n`;
+        const thinking = SKILL_THINKING[skill] ?? "—";
+        output += `| \`/${skill}\` | \`${model}\` | \`${thinking}\` |\n`;
       }
 
       ctx.ui.notify("Skill routes rendered in chat window", "info");
