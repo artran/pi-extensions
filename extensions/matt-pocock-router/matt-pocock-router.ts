@@ -6,9 +6,9 @@ import { Box, Text } from "@earendil-works/pi-tui";
  * Adjust model IDs here if using OpenRouter, Anthropic, etc.
  */
 const TIERS = {
-  // Heavy Reasoning — GLM 5.2 (Zhipu). ~2x cheaper than Kimi K3 at similar
-  // capability: $1.40 in / $4.40 out / $0.26 cache-read per 1M tokens.
-  HEAVY: "opencode-go/glm-5.2",
+  // Heavy Reasoning — DeepSeek V4 Pro. Strong reasoning at deep discounts:
+  // $0.84 in / $0.40 out / $0.10 cache-read per 1M tokens.
+  HEAVY: "opencode-go/deepseek-v4-pro",
 
   // Mid-Tier Workhorse (Qwen 3.7 Plus — best cache economics in the catalog:
   // $0.40 in / $0.04 cache-read per 1M tokens, ideal for long interactive loops)
@@ -43,7 +43,7 @@ type ThinkingLevel =
  *
  * Deliberately scoped to the tiers where the knob actually moves:
  *
- *   - HEAVY (glm-5.2): thinkingLevelMap exposes `high` and `max` only
+ *   - HEAVY (deepseek-v4-pro): thinkingLevelMap exposes `high` and `max` only
  *     (off..medium and xhigh are null). Split by depth of reasoning:
  *       `max`  — multi-step planning, diagnosis, grilling-with-docs,
  *                and the reusable grilling primitive
