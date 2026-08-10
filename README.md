@@ -1,5 +1,13 @@
 # pi-extensions
 
+## Install
+
+Install all extensions from this repo:
+
+```bash
+./install.sh
+```
+
 Custom Pi extensions collected in this repo.
 
 ## Included
@@ -11,17 +19,25 @@ Shows the current context size in Pi's footer and below the editor, coloured gre
 Files:
 - `extensions/status-hud/status-hud.ts`
 
-## Install
-
-Install all extensions from this repo:
-
-```bash
-./install.sh
-```
-
-Or install just this extension:
+Install just this extension:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
 cp extensions/status-hud/status-hud.ts ~/.pi/agent/extensions/status-hud.ts
 ```
+
+### matt-pocock-router
+
+Automatically switched the selected model to suit whichever Matt Pocock skill is
+running. Models are selected from OpenCode Go.
+
+Files:
+- `extensions/matt-pocock-router/matt-pocock-router.ts`
+
+Install just this extension:
+
+```bash
+mkdir -p ~/.pi/agent/extensions
+cp extensions/matt-pocock-router/matt-pocock-router.ts ~/.pi/agent/extensions/matt-pocock-router.ts
+```
+
