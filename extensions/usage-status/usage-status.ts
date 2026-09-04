@@ -280,8 +280,8 @@ function usageTotals(ctx: any): { input: number; output: number; cost: number } 
   return { input, output, cost };
 }
 
-/** Build the footer as a list of colored segments (joined with " · "). */
-function buildSegments(ctx: any, theme: any, footerData: any): string[] {
+/** Build the main footer segments (cwd, stats, model, timer). */
+function buildMainSegments(ctx: any, theme: any, footerData: any): string[] {
   const segs: string[] = [];
 
   // cwd + git branch + session name
@@ -329,7 +329,13 @@ function buildSegments(ctx: any, theme: any, footerData: any): string[] {
   // session timer
   segs.push(theme.fg("dim", `⏱ ${formatDuration(sessionElapsedMs(ctx))}`));
 
-  // per-provider usage
+  return segs;
+}
+
+/** Build the per-provider usage segments. */
+function buildUsageSegments(ctx: any, theme: any): string[] {
+  const segs: string[] = [];
+
   for (const id of providers) {
     const info = cache.get(id);
     if (!info) continue;
@@ -433,7 +439,9 @@ export default function (pi: ExtensionAPI) {
         dispose() {},
         render(width: number): string[] {
           try {
-            return packSegments(buildSegments(footerCtx ?? ctx, theme, footerData), width);
+            const main = packSegments(buildMainSegments(footerCtx ?? ctx, theme, footerData), width);
+            const usage = packSegments(buildUsageSegments(footerCtx ?? ctx, theme), width);
+            return usage.length ? [...main, ...usage] : main;
           } catch {
             return [];
           }
