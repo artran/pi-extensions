@@ -1,7 +1,7 @@
 # usage-status
 
 Replaces Pi's footer with a live usage HUD that fetches real limits and
-remaining quota from each logged-in provider.
+usage from each logged-in provider.
 
 ## What it shows
 
@@ -10,12 +10,11 @@ remaining quota from each logged-in provider.
   session
 - **Context usage** — current tokens vs model context window
 - **Active model** — including thinking level when applicable
-- **Session timer**
-- **Per-provider usage windows** — for each logged-in provider, the percentage
-  of quota *remaining* in each window, colour-coded:
-  - 🟢 green — > 30 % left
-  - 🟡 yellow — 10–30 % left
-  - 🔴 red — ≤ 10 % left (or rate-limited)
+- **Per-provider usage windows** — each logged-in provider starts on its own
+  line and shows the percentage of quota *used* in each window, colour-coded:
+  - 🟢 green — < 70 % used
+  - 🟡 yellow — 70–89 % used
+  - 🔴 red — ≥ 90 % used (or rate-limited)
 
 Each usage window also shows a countdown to its next reset.
 

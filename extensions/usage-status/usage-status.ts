@@ -9,10 +9,10 @@
  *   - openai-codex → GET https://chatgpt.com/backend-api/wham/usage
  *                    (5h rolling window + weekly window + spend control)
  *
- * Replaces the built-in footer with a single line containing cwd + git
- * branch, token/cost/context stats, the session timer, and each provider's
- * per-window usage as "% left" with reset countdowns. It only wraps onto a
- * second line when the terminal is too narrow.
+ * Replaces the built-in footer with cwd, git branch, token/cost/context
+ * stats, and per-provider usage as "% used" with reset countdowns. Each
+ * provider starts on its own line; long lines wrap when the terminal is too
+ * narrow.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -64,13 +64,13 @@ function formatTokens(n: number): string {
   return `${Math.round(n)}`;
 }
 
-function percentLeft(w: Window): number {
-  return Math.max(0, Math.min(100, 100 - w.percent));
+function percentUsed(w: Window): number {
+  return Math.max(0, Math.min(100, w.percent));
 }
 
-function leftColor(left: number): "success" | "warning" | "error" {
-  if (left <= 10) return "error";
-  if (left <= 30) return "warning";
+function usedColor(used: number, rateLimited: boolean): "success" | "warning" | "error" {
+  if (rateLimited || used >= 90) return "error";
+  if (used >= 70) return "warning";
   return "success";
 }
 
@@ -319,36 +319,36 @@ function buildMainSegments(ctx: any, theme: any, footerData: any): string[] {
   return segs;
 }
 
-/** Build the per-provider usage segments. */
-function buildUsageSegments(ctx: any, theme: any): string[] {
-  const segs: string[] = [];
+/** Build one group of usage segments per provider. */
+function buildUsageSegmentGroups(theme: any): string[][] {
+  const groups: string[][] = [];
 
   for (const id of providers) {
     const info = cache.get(id);
     if (!info) continue;
     if (info.error) {
-      segs.push(theme.fg("accent", id));
-      segs.push(theme.fg("dim", "n/a"));
+      groups.push([theme.fg("accent", id), theme.fg("dim", "n/a")]);
       continue;
     }
     if (info.windows.length === 0) {
-      segs.push(theme.fg("accent", id));
-      segs.push(theme.fg("dim", "no usage data"));
+      groups.push([theme.fg("accent", id), theme.fg("dim", "no usage data")]);
       continue;
     }
     const windows = info.windows.map((w) => {
       const label = windowLabel(w);
-      const left = percentLeft(w);
-      const value = `${left}%`;
-      let s = theme.fg(leftColor(left), `${label} ${value}`);
+      const used = percentUsed(w);
+      const value = `${used}%`;
+      let s = theme.fg(usedColor(used, w.rateLimited), `${label} ${value}`);
       if (w.resetsAt) s += theme.fg("dim", ` (${formatDuration(w.resetsAt - Date.now())})`);
       return s;
     });
-    segs.push(theme.fg("accent", id) + theme.fg("dim", ": ") + windows[0]);
-    for (let i = 1; i < windows.length; i++) segs.push(windows[i]);
+    groups.push([
+      theme.fg("accent", id) + theme.fg("dim", ": ") + windows[0],
+      ...windows.slice(1),
+    ]);
   }
 
-  return segs;
+  return groups;
 }
 
 /** Pack segments into lines, wrapping only when the terminal is too narrow. */
@@ -427,7 +427,7 @@ export default function (pi: ExtensionAPI) {
         render(width: number): string[] {
           try {
             const main = packSegments(buildMainSegments(footerCtx ?? ctx, theme, footerData), width);
-            const usage = packSegments(buildUsageSegments(footerCtx ?? ctx, theme), width);
+            const usage = buildUsageSegmentGroups(theme).flatMap((segments) => packSegments(segments, width));
             return usage.length ? [...main, ...usage] : main;
           } catch {
             return [];
