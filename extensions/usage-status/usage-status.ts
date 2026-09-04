@@ -244,16 +244,6 @@ async function fetchCodex(agentDir: string): Promise<Window[]> {
   return parseCodex(await res.json());
 }
 
-function sessionElapsedMs(ctx: any): number {
-  try {
-    const header = ctx.sessionManager?.getHeader?.();
-    const start = header?.timestamp ? Date.parse(header.timestamp) : 0;
-    return start ? Math.max(0, Date.now() - start) : 0;
-  } catch {
-    return 0;
-  }
-}
-
 function usageTotals(ctx: any): { input: number; output: number; cost: number } {
   let input = 0;
   let output = 0;
@@ -325,9 +315,6 @@ function buildMainSegments(ctx: any, theme: any, footerData: any): string[] {
     }
     segs.push(theme.fg("dim", m));
   }
-
-  // session timer
-  segs.push(theme.fg("dim", `⏱ ${formatDuration(sessionElapsedMs(ctx))}`));
 
   return segs;
 }
