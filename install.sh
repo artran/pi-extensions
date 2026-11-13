@@ -17,4 +17,7 @@ rm -f "$TARGET_DIR/usage-status.ts"
 cp "$ROOT_DIR/extensions/usage-status/usage-status.ts" "$TARGET_DIR/usage-status.ts"
 echo "Installed: $TARGET_DIR/usage-status.ts"
 
+cp "$ROOT_DIR/extensions/task-profiles/task-profiles.ts" "$TARGET_DIR/task-profiles.ts"
+echo "Installed: $TARGET_DIR/task-profiles.ts"
+
 echo "Reload Pi with /reload if it is already running."
