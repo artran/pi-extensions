@@ -28,8 +28,14 @@ cp extensions/status-hud/status-hud.ts ~/.pi/agent/extensions/status-hud.ts
 
 ### matt-pocock-router
 
-Automatically switched the selected model to suit whichever Matt Pocock skill is
-running. Models are selected from OpenCode Go.
+Switches models when you explicitly invoke a Matt Pocock skill with `/skill:name`
+or `/name`. Uses OpenAI Codex for correctness-sensitive work and visual prototypes,
+and OpenCode Go for routine tasks. Sign in to both providers with `/login`.
+
+Run `/skill-routes` to see the model and thinking level assigned to each skill.
+Reading nested skills does not switch models; subagent models are configured
+separately. Model changes persist for the session until you select another model
+or invoke another routed skill.
 
 Files:
 - `extensions/matt-pocock-router/matt-pocock-router.ts`

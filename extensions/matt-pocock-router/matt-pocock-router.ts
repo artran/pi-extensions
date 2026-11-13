@@ -2,24 +2,15 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Box, Text } from "@earendil-works/pi-tui";
 
 /**
- * Model Tier Mappings for OpenCode Go
- * Adjust model IDs here if using OpenRouter, Anthropic, etc.
+ * OpenAI Codex subscription models for correctness-sensitive work;
+ * OpenCode Go models for routine, high-volume tasks.
+ * Authenticate both providers through /login before using these routes.
  */
 const TIERS = {
-  // Heavy Reasoning — DeepSeek V4 Pro. Strong reasoning at deep discounts:
-  // $0.84 in / $0.40 out / $0.10 cache-read per 1M tokens.
-  HEAVY: "opencode-go/deepseek-v4-pro",
-
-  // Mid-Tier Workhorse (Qwen 3.7 Plus — best cache economics in the catalog:
-  // $0.40 in / $0.04 cache-read per 1M tokens, ideal for long interactive loops)
+  HEAVY: "openai-codex/gpt-6.1-sol",
+  VISUAL: "openai-codex/gpt-6.1-terra",
   WORKHORSE: "opencode-go/qwen3.7-plus",
-
-  // Fast / Budget (Thousands of calls per 5h window)
-  FAST: "opencode-go/deepseek-v4-flash",
-
-  // Smart / Near-frontier (GLM-5.3-Flash — reportedly GPT-5.6-class quality
-  // at ~33% less per request than DeepSeek V4 Pro: 1,580 vs 1,050 req / 5h.
-  // Only used where quality matters but max-depth reasoning doesn't.)
+  FAST: "opencode-go/deepseek-v4.1-flash",
   SMART: "opencode-go/glm-5.3-flash",
 };
 
@@ -28,10 +19,14 @@ const TIERS = {
  *
  * Mapped against every skill in skills-list.md, grouped by the same
  * sections. Tiers reflect the kind of work each skill does:
- *   HEAVY      — deepest reasoning: planning, diagnosis, max-depth grilling
- *   SMART      — near-frontier judgment without max-depth reasoning
- *   WORKHORSE  — interactive build/review cycles that reuse a long context
- *   FAST       — routing, triage, one-shot setup, compact handoffs
+ *   HEAVY      — correctness-sensitive planning, coding, diagnosis, review
+ *   VISUAL     — visual exploration and UI prototypes
+ *   SMART      — routine issue judgment and conversational grilling
+ *   WORKHORSE  — research, drafting, teaching, and handoffs
+ *   FAST       — routing, one-shot setup, and clarification
+ *
+ * Routes apply to explicit slash input only. Reading a nested skill does
+ * not switch models, and subagent model selection is configured separately.
  */
 // Pi thinking levels; clamped per-model by setThinkingLevel.
 //   off | minimal | low | medium | high | xhigh | max
@@ -45,110 +40,92 @@ type ThinkingLevel =
   | "max";
 
 /**
- * Per-skill thinking-level overrides.
- *
- * Deliberately scoped to the tiers where the knob actually moves:
- *
- *   - HEAVY (deepseek-v4-pro): thinkingLevelMap exposes `high` and `max` only
- *     (off..medium and xhigh are null). Reserved for `max`-depth skills:
- *     multi-step planning, diagnosis, grilling-with-docs, and the reusable
- *     grilling primitive. The lighter heavy skills moved to SMART.
- *
- *   - SMART (glm-5.3-flash): a Flash variant, so `max` thinking is not
- *     trusted here — near-frontier quality is spent on skills that need
- *     strong judgment, not deepest reasoning. All SMART skills run `high`.
- *
- *   - FAST (deepseek-v4-flash): exposes off / high / max only. Trivial
- *     dispatches go `off` (skip reasoning tokens entirely); the one
- *     compaction skill goes `high` so the handoff summary keeps quality.
- *
- *   - WORKHORSE (qwen3.7-plus): full off..high granularity, and $1.60/M
- *     output makes reasoning tokens non-trivial — the only tier where a
- *     real 2-bucket split pays. Synthesis/authoring at `medium`, precision /
- *     interaction loops at `high`.
+ * Use high for correctness and judgment, medium for routine drafting and
+ * visual exploration, and low for dispatch. DeepSeek V4.1 Flash does not
+ * support off. Reserve higher reasoning efforts for manual escalation.
  */
 const SKILL_THINKING: Record<string, ThinkingLevel> = {
-  // === HEAVY — deepest reasoning at `max` ===
-  "grill-with-docs": "max",
-  "wayfinder": "max",
-  "diagnosing-bugs": "max",
-  "improve-codebase-architecture": "max",
-  "grilling": "max",
-
-  // === SMART — near-frontier judgment at `high` ===
+  // === HEAVY — correctness-sensitive work ===
+  "grill-with-docs": "high",
+  "wayfinder": "high",
+  "diagnosing-bugs": "high",
+  "improve-codebase-architecture": "high",
   "implement": "high",
-  "grill-me": "high",
   "domain-modeling": "high",
   "codebase-design": "high",
-
-  // === FAST — trivial dispatch turns reasoning off ===
-  "ask-matt": "off",
-  "triage": "off",
-  "setup-matt-pocock-skills": "off",
-  "wait-what": "off",
-  // === FAST — compaction needs real reasoning ===
-  "handoff": "high",
-
-  // === WORKHORSE — precision / interaction at high ===
+  "to-spec": "high",
+  "to-tickets": "high",
   "tdd": "high",
   "code-review": "high",
   "resolving-merge-conflicts": "high",
-  // === WORKHORSE — synthesis / authoring at medium ===
-  "to-spec": "medium",
-  "to-tickets": "medium",
+
+  // === SMART — routine judgment and interviews ===
+  "triage": "high",
+  "grill-me": "high",
+  "grilling": "high",
+
+  // === FAST — dispatch and clarification ===
+  "ask-matt": "low",
+  "setup-matt-pocock-skills": "low",
+  "wait-what": "low",
+
+  // === WORKHORSE — precision at high, routine drafting at medium ===
+  "handoff": "high",
+  "writing-for-agents": "high",
   "research": "medium",
-  "writing-for-agents": "medium",
   "teach": "medium",
   "to-questionnaire": "medium",
-  "prototype": "medium",
   "wizard": "medium",
+
+  // === VISUAL — prototype exploration ===
+  "prototype": "medium",
 };
 const SKILL_ROUTER: Record<string, string> = {
   // === Engineering — user-invoked ===
   // Router/triage over user-invoked skills — cheap dispatch
   "ask-matt": TIERS.FAST,
-  // Grilling + domain modeling inline — max-depth reasoning
+  // Grilling + domain modeling inline — correctness-sensitive reasoning
   "grill-with-docs": TIERS.HEAVY,
-  // Move issues through a triage state machine — cheap transitions
-  "triage": TIERS.FAST,
-  // Scan codebase for deepening opportunities, then grill — max-depth
+  // Move issues through a triage state machine — issue judgment
+  "triage": TIERS.SMART,
+  // Scan codebase for deepening opportunities, then grill
   "improve-codebase-architecture": TIERS.HEAVY,
   // One-shot repo config — run once, cheap
   "setup-matt-pocock-skills": TIERS.FAST,
-  // Synthesize a conversation into a spec — workhorse synthesis
-  "to-spec": TIERS.WORKHORSE,
-  // Break a plan into tracer-bullet tickets with blocking edges — workhorse
-  "to-tickets": TIERS.WORKHORSE,
-  // Orchestrate tdd + code-review against a spec — smart coordination
-  "implement": TIERS.SMART,
-  // Plan a huge chunk of work as decision tickets — max-depth planning
+  // Preserve constraints when synthesizing a spec
+  "to-spec": TIERS.HEAVY,
+  // Plan tracer-bullet tickets and their blocking dependencies
+  "to-tickets": TIERS.HEAVY,
+  // Orchestrate tdd + code-review; nested skill reads do not reroute
+  "implement": TIERS.HEAVY,
+  // Plan a huge chunk of work as decision tickets
   "wayfinder": TIERS.HEAVY,
 
   // === Engineering — model-invoked ===
-  // Throwaway prototype to answer a design question — workhorse build
-  "prototype": TIERS.WORKHORSE,
-  // Disciplined diagnosis loop for hard bugs — max-depth reasoning
+  // Throwaway prototype to answer a design question — visual exploration
+  "prototype": TIERS.VISUAL,
+  // Disciplined diagnosis loop for hard bugs
   "diagnosing-bugs": TIERS.HEAVY,
   // Investigate against high-trust primary sources — workhorse synthesis
   "research": TIERS.WORKHORSE,
-  // Red-green-refactor interactive loop — workhorse
-  "tdd": TIERS.WORKHORSE,
-  // Sharpen the project's domain model — smart reasoning
-  "domain-modeling": TIERS.SMART,
-  // Deep-module design vocabulary — smart reasoning
-  "codebase-design": TIERS.SMART,
-  // Two-axis diff review as parallel sub-agents — workhorse
-  "code-review": TIERS.WORKHORSE,
-  // Trace intent through each side of a merge conflict — workhorse
-  "resolving-merge-conflicts": TIERS.WORKHORSE,
+  // Red-green-refactor interactive loop — behavioral correctness
+  "tdd": TIERS.HEAVY,
+  // Sharpen the project's domain model
+  "domain-modeling": TIERS.HEAVY,
+  // Deep-module design vocabulary and boundary decisions
+  "codebase-design": TIERS.HEAVY,
+  // Two-axis review; subagent models must be configured separately
+  "code-review": TIERS.HEAVY,
+  // Trace intent through each side of a merge conflict
+  "resolving-merge-conflicts": TIERS.HEAVY,
   // Generate an interactive bash wizard — workhorse authoring
   "wizard": TIERS.WORKHORSE,
 
   // === Productivity — user-invoked ===
   // Relentless interview about a plan/design — smart reasoning
   "grill-me": TIERS.SMART,
-  // Compact conversation into a handoff doc — cheap summary
-  "handoff": TIERS.FAST,
+  // Preserve constraints and unresolved details in a handoff doc
+  "handoff": TIERS.WORKHORSE,
   // Multi-session teaching using the cwd as workspace — workhorse
   "teach": TIERS.WORKHORSE,
   // Turn a decision into a Markdown questionnaire — workhorse authoring
@@ -157,8 +134,8 @@ const SKILL_ROUTER: Record<string, string> = {
   "wait-what": TIERS.FAST,
 
   // === Productivity — model-invoked ===
-  // Reusable interview primitive behind grill-me/triage/wayfinder — max-depth
-  "grilling": TIERS.HEAVY,
+  // Reusable interview primitive — match grill-me's conversational default
+  "grilling": TIERS.SMART,
   // Authoring skills, AGENTS.md/CLAUDE.md, pointer docs — workhorse
   "writing-for-agents": TIERS.WORKHORSE,
 };
@@ -218,7 +195,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Compare by "provider/modelId": ctx.model.id is only the bare model id
-    // (e.g. "deepseek-v4-flash"), so the naive string compare never matched.
+    // (e.g. "deepseek-v4.1-flash"), not the provider-qualified route.
     const current = ctx.model;
     const currentKey = current ? `${current.provider}/${current.id}` : null;
 
