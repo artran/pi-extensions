@@ -5,10 +5,15 @@ import { Box, Text } from "@earendil-works/pi-tui";
  * OpenAI Codex subscription models for correctness-sensitive work;
  * OpenCode Go models for routine, high-volume tasks.
  * Authenticate both providers through /login before using these routes.
+ *
+ * GPT-6.2 generation (Nov 2026): Sol keeps 6.1 Sol's pricing and 500k
+ * context while scoring higher and using fewer tokens, so HEAVY tracks
+ * Sol directly. Astra is OpenAI's best visual/web/3D model but has a
+ * 272k window and ~4x Sol's token price, so it only owns VISUAL.
  */
 const TIERS = {
-  HEAVY: "openai-codex/gpt-6.1-sol",
-  VISUAL: "openai-codex/gpt-6.1-terra",
+  HEAVY: "openai-codex/gpt-6.2-sol",
+  VISUAL: "openai-codex/gpt-6.2-astra",
   WORKHORSE: "opencode-go/qwen3.7-plus",
   FAST: "opencode-go/deepseek-v4.1-flash",
   SMART: "opencode-go/glm-5.3-flash",
